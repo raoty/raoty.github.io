@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <title>口算练习</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 600px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .category {
+        margin-bottom: 30px;
+        padding: 15px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+      }
+      .category h2 {
+        color: #333;
+      }
+
+      #questions {
+        margin-top: 10px;
+      }
+      .question {
+        padding: 10px;
+        display: flex;
+        align-items: center;
+      }
+      .question p {
+        font-size: 20px;
+        margin: 0;
+        margin-right: 10px;
+      }
+      .question input[type="number"] {
+        font-size: 20px;
+        width: auto;
+      }
+      .checkmark {
+        margin-left: 10px;
+        font-size: 20px;
+      }
+      .correct {
+        color: green;
+      }
+      .incorrect {
+        color: red;
+      }
+      .pagination {
+        margin-top: 20px;
+        text-align: center;
+      }
+
+      @media (max-width: 1024px) and (min-width: 768px) {
+        .question input[type="number"] {
+          width: 160px;
+        }
+      }
+
+      @media (max-width: 767px) {
+        .question input[type="number"] {
+          width: 80px;
+        }
+      }
+
+      .timer {
+        font-size: 36px;
+        font-weight: bold;
+        margin: 20px 0;
+        text-align: center;
+      }
+      button {
+        padding: 10px 20px;
+        margin-right: 10px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:disabled {
+        background-color: #cccccc;
+      }
+      .result {
+        margin-top: 20px;
+        font-weight: bold;
+      }
+      h1 {
+        display: inline-block;
+        margin-right: 20px;
+      }
+      .timer {
+        display: inline-block;
+        font-size: 36px;
+        margin: 0;
+        padding: 5px 10px;
+        border-radius: 5px;
+        background-color: #4caf50;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        position: relative;
+        z-index: 1;
+      }
+      .timer.urgent {
+        background-color: #f44336;
+      }
+      #clearHistoryBtn {
+        color: #666;
+      }
+      #clearHistoryBtn:hover {
+        background-color: #e1e1e1;
+      }
+      .history h2 {
+        display: inline-block;
+        margin-right: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>口算练习</h1>
+    <div class="timer" id="timer">5:00</div>
+
+    <div>
+      <button id="startBtn">开始</button>
+      <button id="pauseBtn" disabled>暂停</button>
+      <button id="submitBtn" disabled>交卷</button>
+      <button id="resetBtn" disabled>复位</button>
+    </div>
+    <div id="questions"></div>
+    <div class="pagination">
+      <button id="prevBtn" disabled>上一页</button>
+      <button id="nextBtn">下一页</button>
+    </div>
+    <div class="result" id="result"></div>
+    <div class="history">
+      <h2>做题记录</h2>
+      <a href="javascript:void(0);" id="clearHistoryBtn" onclick="clearHistory()">清除</a>
+    </style>
+  </head>
+  </div>
+    <ul class="history-list" id="historyList"></ul>
+  </div>
+
+    <script>
+      const questionCount = 100;
+      const timeLimit = 5 * 60; // 5分钟
+      const itemsPerPage = 5;
+      let currentPage = 1;
+      let timer;
+      let remainingTime = timeLimit;
+      let isRunning = false;
+      let questions = [];
+      let showAnswer = false;
+      let startTime = 0;
+
+      // 生成两位数随机数 (10-99)
+      function getTwoDigitNumber() {
+        return Math.floor(Math.random() * 90) + 10;
+      }
+
+      // 生成加法题目
+      function generateAdditionQuestions(count) {
+        const additionQuestions = [];
+        for (let i = 0; i < count; i++) {
+          const num1 = getTwoDigitNumber();
+          const num2 = getTwoDigitNumber();
+          const correctAnswer = num1 + num2;
+          if (correctAnswer >= 10 && correctAnswer <= 99) {
+            additionQuestions.push({
+              question: `${num1} + ${num2} =`,
+              answer: correctAnswer,
+              category: "加法",
+              userAnswer: null,
+            });
+          } else {
+            i--;
+          }
+        }
+        return additionQuestions;
+      }
+
+      // 生成减法题目
+      function generateSubtractionQuestions(count) {
+        const subtractionQuestions = [];
+        for (let i = 0; i < count; i++) {
+          let num1 = getTwoDigitNumber();
+          let num2 = getTwoDigitNumber();
+          if (num1 < num2) {
+            [num1, num2] = [num2, num1];
+          }
+          const correctAnswer = num1 - num2;
+          if (correctAnswer >= 10 && correctAnswer <= 99) {
+            subtractionQuestions.push({
+              question: `${num1} - ${num2} =`,
+              answer: correctAnswer,
+              category: "减法",
+              userAnswer: null,
+            });
+          } else {
+            i--;
+          }
+        }
+        return subtractionQuestions;
+      }
+
+      // 生成乘法题目
+      function generateMultiplicationQuestions(count) {
+        const multiplicationQuestions = [];
+        for (let i = 0; i < count; i++) {
+          const num1 = getTwoDigitNumber();
+          const num2 = Math.floor(Math.random() * 8) + 2; // 生成 2 - 9 的随机数
+          const correctAnswer = num1 * num2;
+          if (correctAnswer >= 10 && correctAnswer <= 99) {
+            multiplicationQuestions.push({
+              question: `${num1} × ${num2} =`,
+              answer: correctAnswer,
+              category: "乘法",
+              userAnswer: null,
+            });
+          } else {
+            i--;
+          }
+        }
+        return multiplicationQuestions;
+      }
+
+      // 生成加减混合题目
+      function generateMixedQuestions(count) {
+        const mixedQuestions = [];
+        for (let i = 0; i < count; i++) {
+          const num1 = getTwoDigitNumber();
+          const num2 = getTwoDigitNumber();
+          const num3 = getTwoDigitNumber();
+          const op1 = Math.random() > 0.5 ? "+" : "-";
+          const op2 = Math.random() > 0.5 ? "+" : "-";
+
+          let step1Answer;
+          if (op1 === "+") {
+            step1Answer = num1 + num2;
+          } else {
+            step1Answer = num1 - num2;
+          }
+
+          let correctAnswer;
+          if (op2 === "+") {
+            correctAnswer = step1Answer + num3;
+          } else {
+            correctAnswer = step1Answer - num3;
+          }
+
+          if (correctAnswer >= 10 && correctAnswer <= 99) {
+            mixedQuestions.push({
+              question: `(${num1} ${op1} ${num2}) ${op2} ${num3} =`,
+              answer: correctAnswer,
+              category: "加减混合",
+              userAnswer: null,
+            });
+          } else {
+            i--;
+          }
+        }
+        return mixedQuestions;
+      }
+
+      // 渲染当前页的题目
+      function renderQuestions(status = false) {
+        const startIndex = (currentPage - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const currentQuestions = questions.slice(startIndex, endIndex);
+        const questionsDiv = document.getElementById("questions");
+        questionsDiv.innerHTML = "";
+
+        currentQuestions.forEach((question, index) => {
+          const questionDiv = document.createElement("div");
+          questionDiv.className = "question";
+          questionDiv.innerHTML = `
+            <p>${question.question}</p>
+            <input type="number" id="answer${
+              startIndex + index
+            }" data-answer="${question.answer}" data-category="${
+            question.category
+          }" data-userAnswer="${question.userAnswer || ""}" value="${
+            question.userAnswer || ""
+          }"  ${!isRunning ? "disabled" : ""}> 
+            <span class="checkmark"></span>
+          `;
+          questionsDiv.appendChild(questionDiv);
+        });
+
+        // 添加输入事件监听
+        const inputs = document.querySelectorAll("#questions input");
+        inputs.forEach((input, index) => {
+          input.addEventListener("blur", () => {
+            const userAnswer = parseInt(input.value);
+            const currentIndex = startIndex + index;
+            if (questions[currentIndex]) {
+              questions[currentIndex].userAnswer = isNaN(userAnswer)
+                ? null
+                : userAnswer;
+            }
+          });
+        });
+
+        if (status) {
+          const inputs = document.querySelectorAll("#questions input");
+          inputs.forEach((input, index) => {
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const currentIndex = startIndex + index;
+            const userAnswer = questions[currentIndex].userAnswer;
+
+            const checkmark = input.nextElementSibling;
+            const correctAnswer = questions[currentIndex].answer;
+            console.log("---", userAnswer);
+            console.log("---", correctAnswer);
+
+            if (parseInt(userAnswer) === parseInt(correctAnswer)) {
+              checkmark.textContent = "✓";
+              checkmark.className = "checkmark correct";
+            } else {
+              checkmark.textContent = "✗";
+              checkmark.className = "checkmark incorrect";
+            }
+          });
+        }
+
+        // 更新分页按钮状态
+        document.getElementById("prevBtn").disabled = currentPage === 1;
+        document.getElementById("nextBtn").disabled =
+          endIndex >= questions.length;
+      }
+
+      // 生成所有题目
+      function generateAllQuestions() {
+        const addition = generateAdditionQuestions(25);
+        const subtraction = generateSubtractionQuestions(25);
+        const mixed = generateMixedQuestions(25);
+        const multiplication = generateMultiplicationQuestions(25);
+        return [...addition, ...subtraction, ...multiplication, ...mixed];
+      }
+
+      // 修改保存答题结果到本地存储函数
+      function saveResultToLocalStorage(score, wrongQuestions, duration) {
+        const history = JSON.parse(localStorage.getItem("quizHistory") || "[]");
+        const now = new Date();
+        const result = {
+          date: now.toLocaleString(),
+          score: score,
+          wrongQuestions: wrongQuestions,
+          duration: duration
+        };
+        history.unshift(result);
+        localStorage.setItem("quizHistory", JSON.stringify(history));
+      }
+
+      // 修改交卷函数调用部分
+      function submitQuiz() {
+        pauseTimer();
+        startTime = new Date().getTime() - (timeLimit - remainingTime) * 1000;
+        const endTime = new Date().getTime();
+        const duration = (endTime - startTime) / 1000; // 转换为秒
+        showAnswer = true;
+        let score = 0;
+        let wrongQuestions = [];
+
+        questions.forEach((q, index) => {
+          if (parseInt(q.userAnswer) === parseInt(q.answer)) {
+            score += 2;
+          } else {
+            wrongQuestions.push({
+              index: index + 1,
+              question: q.question,
+              correctAnswer: q.answer,
+              userAnswer: isNaN(q.userAnswer) ? "未作答" : q.userAnswer,
+              category: q.category,
+            });
+          }
+        });
+
+        const resultDiv = document.getElementById("result");
+        let resultHtml = `<p>得分: ${score}/${questionCount * 2}</p>`;
+
+        const categoryWrongQuestions = {};
+        wrongQuestions.forEach((q) => {
+          if (!categoryWrongQuestions[q.category]) {
+            categoryWrongQuestions[q.category] = [];
+          }
+          categoryWrongQuestions[q.category].push(q);
+        });
+
+        for (const category in categoryWrongQuestions) {
+          resultHtml += `<h3>${category} 错题:</h3><ul>`;
+          categoryWrongQuestions[category].forEach((q) => {
+            resultHtml += `
+              <li>
+                ${q.index}. ${q.question} ${
+              q.userAnswer !== null && q.userAnswer !== undefined
+                ? q.userAnswer
+                : "未作答"
+            }<br>
+                正确答案: ${q.correctAnswer}
+              </li>
+            `;
+          });
+          resultHtml += `</ul>`;
+        }
+
+        resultDiv.innerHTML = resultHtml;
+
+        document.getElementById("startBtn").disabled = true;
+        document.getElementById("pauseBtn").disabled = true;
+        document.getElementById("submitBtn").disabled = true;
+        document.getElementById("resetBtn").disabled = false;
+        renderQuestions(showAnswer);
+
+        saveResultToLocalStorage(score, wrongQuestions, duration);
+        loadHistory();
+      }
+      // 加载历史记录
+      function loadHistory() {
+        const history = JSON.parse(localStorage.getItem("quizHistory") || "[]");
+        const historyList = document.getElementById("historyList");
+        historyList.innerHTML = "";
+        history.forEach((item, index) => {
+          const li = document.createElement("li");
+          li.className = "history-item";
+          li.innerHTML = `
+            时间: ${item.date}<br>
+            得分: ${item.score}/${questionCount * 2}<br>
+            用时: ${item.duration} 秒
+            <div class="history-detail" id="detail-${index}"></div>
+          `;
+          li.addEventListener("click", () => {
+            const detail = document.getElementById(`detail-${index}`);
+            if (detail.style.display === "block") {
+              detail.style.display = "none";
+            } else {
+              let detailHtml = "<h4>错题详情:</h4><ul>";
+              item.wrongQuestions.forEach((q) => {
+                detailHtml += `
+                  <li>
+                    ${q.index}. ${q.question} ${q.userAnswer !== null && q.userAnswer !== undefined ? q.userAnswer : "未作答"}<br>
+                    正确答案: ${q.correctAnswer}
+                  </li>
+                `;
+              });
+              detailHtml += "</ul>";
+              detail.innerHTML = detailHtml;
+              detail.style.display = "block";
+            }
+          });
+          historyList.appendChild(li);
+        });
+      }
+
+      // 清除历史记录
+      function clearHistory() {
+        const password = prompt('请输入密码以清除历史记录:');
+        if (password === '123456') {
+          localStorage.removeItem('quizHistory');
+          loadHistory();
+          alert('历史记录已清除！');
+        } else {
+          alert('密码错误，清除失败！');
+        }
+      }
+
+      // 初始化函数
+      function init() {
+        questions = generateAllQuestions();
+        renderQuestions();
+        loadHistory();
+
+        // 分页按钮事件监听
+        document.getElementById("prevBtn").addEventListener("click", () => {
+          if (currentPage > 1) {
+            currentPage--;
+            renderQuestions(showAnswer);
+          }
+        });
+
+        document.getElementById("nextBtn").addEventListener("click", () => {
+          if (currentPage * itemsPerPage < questions.length) {
+            currentPage++;
+            renderQuestions(showAnswer);
+          }
+        });
+
+        document.getElementById("startBtn").addEventListener("click", () => {
+          startTimer();
+          document.getElementById("startBtn").disabled = true;
+          document.getElementById("pauseBtn").disabled = false;
+          document.getElementById("submitBtn").disabled = false;
+          renderQuestions();
+        });
+
+        document.getElementById("pauseBtn").addEventListener("click", () => {
+          pauseTimer();
+          document.getElementById("pauseBtn").disabled = true;
+          document.getElementById("startBtn").disabled = false;
+          renderQuestions();
+        });
+
+        document
+          .getElementById("submitBtn")
+          .addEventListener("click", submitQuiz);
+
+        document
+          .getElementById("resetBtn")
+          .addEventListener("click", resetQuiz);
+      }
+
+      // 计时器
+      function startTimer() {
+        isRunning = true;
+        timer = setInterval(() => {
+          remainingTime--;
+          const minutes = Math.floor(remainingTime / 60);
+          const seconds = remainingTime % 60;
+          document.getElementById("timer").textContent = `${minutes
+            .toString()
+            .padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+
+          if (remainingTime < 60) {
+            document.getElementById("timer").classList.add("urgent");
+          } else {
+            document.getElementById("timer").classList.remove("urgent");
+          }
+
+          if (remainingTime <= 0) {
+            clearInterval(timer);
+            submitQuiz();
+          }
+        }, 1000);
+      }
+
+      // 暂停计时
+      function pauseTimer() {
+        isRunning = false;
+        clearInterval(timer);
+      }
+
+      // 重置游戏
+      function resetQuiz() {
+        pauseTimer();
+        remainingTime = timeLimit;
+        currentPage = 1;
+        showAnswer = false;
+        isRunning = false;
+        document.getElementById("timer").textContent = "5:00";
+        document.getElementById("timer").classList.remove("urgent");
+        questions = generateAllQuestions();
+        document.getElementById("startBtn").disabled = false;
+        document.getElementById("pauseBtn").disabled = true;
+        document.getElementById("submitBtn").disabled = true;
+        document.getElementById("resetBtn").disabled = true;
+        document.getElementById("result").innerHTML = "";
+        renderQuestions();
+      }
+
+      // 页面加载完成后初始化
+      window.addEventListener("load", init);
+    </script>
+  </body>
+</html>
