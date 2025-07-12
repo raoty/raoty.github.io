@@ -139,7 +139,7 @@
     <div class="history">
       <h2>做题记录</h2>
       <a href="javascript:void(0);" id="clearHistoryBtn" onclick="clearHistory()">清除</a>
-    </style>
+      <a href="javascript:void(0);" id="clearHistoryBtn" onclick="addMaxNumberSetting()">设置最大值</a>
   </head>
   </div>
     <ul class="history-list" id="historyList"></ul>
@@ -152,14 +152,45 @@
       let currentPage = 1;
       let timer;
       let remainingTime = timeLimit;
+      let lastRemainingTime = timeLimit; //上次答题开始时间
       let isRunning = false;
       let questions = [];
       let showAnswer = false;
       let startTime = 0;
+      let maxNumber = 100; // 默认最大数为100
 
-      // 生成两位数随机数 (10-99)
+      initMaxNumberSetting();
+
+      // 添加管理页面设置最大数
+      function addMaxNumberSetting() {
+        const password = prompt('请输入密码:');
+        if (password === '123456') {
+          const input = prompt('请输入最大值:', maxNumber);
+          if (input !== null) {
+            const newMaxNumber = parseInt(input);
+            if (!isNaN(newMaxNumber) && newMaxNumber > 0) {
+              localStorage.setItem('maxNumber', newMaxNumber);
+            }
+          }
+          alert('已重新设置最大值');
+          initMaxNumberSetting();
+          resetQuiz();
+        } else {
+          alert('密码错误！');
+        }
+      }
+
+      // 初始化时加载保存的最大数
+      function initMaxNumberSetting() {
+        const savedMaxNumber = localStorage.getItem('maxNumber');
+        if (savedMaxNumber) {
+          maxNumber = parseInt(savedMaxNumber);
+        }
+      }
+
+      // 生成两位数随机数 (1-99)
       function getTwoDigitNumber() {
-        return Math.floor(Math.random() * 90) + 10;
+        return Math.floor(Math.random() * (maxNumber - 1)) + 1;
       }
 
       // 生成加法题目
@@ -169,7 +200,7 @@
           const num1 = getTwoDigitNumber();
           const num2 = getTwoDigitNumber();
           const correctAnswer = num1 + num2;
-          if (correctAnswer >= 10 && correctAnswer <= 99) {
+          if (correctAnswer <= 99) {
             additionQuestions.push({
               question: `${num1} + ${num2} =`,
               answer: correctAnswer,
@@ -193,7 +224,7 @@
             [num1, num2] = [num2, num1];
           }
           const correctAnswer = num1 - num2;
-          if (correctAnswer >= 10 && correctAnswer <= 99) {
+          if (correctAnswer <= 99) {
             subtractionQuestions.push({
               question: `${num1} - ${num2} =`,
               answer: correctAnswer,
@@ -214,7 +245,7 @@
           const num1 = getTwoDigitNumber();
           const num2 = Math.floor(Math.random() * 8) + 2; // 生成 2 - 9 的随机数
           const correctAnswer = num1 * num2;
-          if (correctAnswer >= 10 && correctAnswer <= 99) {
+          if (correctAnswer <= 99) {
             multiplicationQuestions.push({
               question: `${num1} × ${num2} =`,
               answer: correctAnswer,
@@ -252,7 +283,7 @@
             correctAnswer = step1Answer - num3;
           }
 
-          if (correctAnswer >= 10 && correctAnswer <= 99) {
+          if (correctAnswer <= 99) {
             mixedQuestions.push({
               question: `(${num1} ${op1} ${num2}) ${op2} ${num3} =`,
               answer: correctAnswer,
@@ -284,8 +315,7 @@
             }" data-answer="${question.answer}" data-category="${
             question.category
           }" data-userAnswer="${question.userAnswer || ""}" value="${
-            question.userAnswer || ""
-          }"  ${!isRunning ? "disabled" : ""}> 
+            question.userAnswer || ""}"  ${!isRunning ? "disabled" : ""}>
             <span class="checkmark"></span>
           `;
           questionsDiv.appendChild(questionDiv);
@@ -298,9 +328,10 @@
             const userAnswer = parseInt(input.value);
             const currentIndex = startIndex + index;
             if (questions[currentIndex]) {
-              questions[currentIndex].userAnswer = isNaN(userAnswer)
-                ? null
-                : userAnswer;
+              questions[currentIndex].userAnswer = isNaN(userAnswer) ? null : userAnswer;
+              let t = questions[currentIndex].duration == undefined ? 0 : questions[currentIndex].duration;
+              questions[currentIndex].duration = t + lastRemainingTime - remainingTime;
+              lastRemainingTime = remainingTime;
             }
           });
         });
@@ -314,8 +345,6 @@
 
             const checkmark = input.nextElementSibling;
             const correctAnswer = questions[currentIndex].answer;
-            console.log("---", userAnswer);
-            console.log("---", correctAnswer);
 
             if (parseInt(userAnswer) === parseInt(correctAnswer)) {
               checkmark.textContent = "✓";
@@ -329,12 +358,54 @@
 
         // 更新分页按钮状态
         document.getElementById("prevBtn").disabled = currentPage === 1;
-        document.getElementById("nextBtn").disabled =
-          endIndex >= questions.length;
+        document.getElementById("nextBtn").disabled = endIndex >= questions.length;
       }
 
-      // 生成所有题目
+      // 从本地存储获取需要复习的长耗时题目
+      function getLongCostQuestionsToReview() {
+        // const questions = JSON.parse(localStorage.getItem("quizHistory") || "[]").flatMap(q => q.longCostQuestions || [])
+        //最近一次答题结果进行复习
+        const quizHistory = JSON.parse(localStorage.getItem("quizHistory") || "[]");
+        const now = new Date();
+        const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        
+        const recentData = quizHistory.filter(item => {
+          const itemDate = new Date(item.date);
+          return itemDate >= oneDayAgo;
+        });
+        
+        const lastQuizHistory = recentData.length > 0 ? recentData[0] : (quizHistory.length > 0 ? quizHistory[0] : null);
+        const questions = [ ...(lastQuizHistory?.longCostQuestions || []) , ...(lastQuizHistory?.wrongQuestions || [])];
+
+        //去重，去掉上次答案、答题时间
+        questions.forEach(q => {
+          q.userAnswer = null;
+          q.duration=0;
+        })
+        return Array.from(new Set(questions))
+      }
+
+      // 过滤出需要复习的长耗时题目
+      function filterQuestionsToReview(questions) {
+        const now = new Date();
+        return questions.filter(q => new Date(q.nextReview) <= now);
+      }
+
+      // 生成所有题目，优先选择学习曲线中的题目
       function generateAllQuestions() {
+        const reviewQuestions = filterQuestionsToReview(getLongCostQuestionsToReview());
+        const neededCount = questionCount - reviewQuestions.length;
+        
+        if (reviewQuestions.length > 0) {
+          const addition = generateAdditionQuestions(Math.floor(neededCount / 4));
+          const subtraction = generateSubtractionQuestions(Math.floor(neededCount / 4));
+          const mixed = generateMixedQuestions(Math.floor(neededCount / 4));
+          const multiplication = generateMultiplicationQuestions(neededCount - Math.floor(neededCount / 4) * 3);
+          
+          // 优先使用需要复习的题目
+          return [...reviewQuestions.map(q => ({...q, userAnswer: null})), ...addition, ...subtraction, ...multiplication, ...mixed];
+        }
+
         const addition = generateAdditionQuestions(25);
         const subtraction = generateSubtractionQuestions(25);
         const mixed = generateMixedQuestions(25);
@@ -343,13 +414,14 @@
       }
 
       // 修改保存答题结果到本地存储函数
-      function saveResultToLocalStorage(score, wrongQuestions, duration) {
+      function saveResultToLocalStorage(score, wrongQuestions,longCostQuestions,duration) {
         const history = JSON.parse(localStorage.getItem("quizHistory") || "[]");
         const now = new Date();
         const result = {
           date: now.toLocaleString(),
           score: score,
           wrongQuestions: wrongQuestions,
+          longCostQuestions:longCostQuestions,
           duration: duration
         };
         history.unshift(result);
@@ -359,12 +431,11 @@
       // 修改交卷函数调用部分
       function submitQuiz() {
         pauseTimer();
-        startTime = new Date().getTime() - (timeLimit - remainingTime) * 1000;
-        const endTime = new Date().getTime();
-        const duration = (endTime - startTime) / 1000; // 转换为秒
+        const duration = timeLimit - remainingTime; // 答题耗时
         showAnswer = true;
         let score = 0;
         let wrongQuestions = [];
+        let longCostQuestions = [];
 
         questions.forEach((q, index) => {
           if (parseInt(q.userAnswer) === parseInt(q.answer)) {
@@ -376,7 +447,20 @@
               correctAnswer: q.answer,
               userAnswer: isNaN(q.userAnswer) ? "未作答" : q.userAnswer,
               category: q.category,
+              duration : q.duration
             });
+          }
+
+          const now = new Date();
+          if(q.duration>=6){
+            const firstReviewDelay = 0; // 12小时内不需要复习
+            let tmp = {
+              ...q,
+              createDate: now,
+              nextReview: new Date(now.getTime() + firstReviewDelay * 60 * 60 * 1000),
+              reviewCount: 0
+            };
+            longCostQuestions.push(tmp);
           }
         });
 
@@ -401,7 +485,8 @@
                 ? q.userAnswer
                 : "未作答"
             }<br>
-                正确答案: ${q.correctAnswer}
+                正确答案: ${q.correctAnswer}<br>
+                ${q.duration ? `耗时: ${q.duration.toFixed(2)}秒` : ''}
               </li>
             `;
           });
@@ -416,9 +501,8 @@
         document.getElementById("resetBtn").disabled = false;
         renderQuestions(showAnswer);
 
-        saveResultToLocalStorage(score, wrongQuestions, duration);
-        loadHistory();
-      }
+        saveResultToLocalStorage(score, wrongQuestions,longCostQuestions, duration);
+        loadHistory();      }
       // 加载历史记录
       function loadHistory() {
         const history = JSON.parse(localStorage.getItem("quizHistory") || "[]");
@@ -443,7 +527,8 @@
                 detailHtml += `
                   <li>
                     ${q.index}. ${q.question} ${q.userAnswer !== null && q.userAnswer !== undefined ? q.userAnswer : "未作答"}<br>
-                    正确答案: ${q.correctAnswer}
+                    正确答案: ${q.correctAnswer}<br>
+                    ${q.duration ? `耗时: ${q.duration.toFixed(2)}秒` : ''}
                   </li>
                 `;
               });
@@ -547,6 +632,7 @@
       function resetQuiz() {
         pauseTimer();
         remainingTime = timeLimit;
+        lastRemainingTime = timeLimit;
         currentPage = 1;
         showAnswer = false;
         isRunning = false;
