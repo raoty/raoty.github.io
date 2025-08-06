@@ -146,7 +146,7 @@
   </div>
 
     <script>
-      const questionCount = 100;
+      const questionCount = 30;
       const timeLimit = 10 * 60; // 5分钟
       const itemsPerPage = 5;
       let currentPage = 1;
@@ -395,22 +395,13 @@
       function generateAllQuestions() {
         const reviewQuestions = filterQuestionsToReview(getLongCostQuestionsToReview());
         const neededCount = questionCount - reviewQuestions.length;
-        
-        if (reviewQuestions.length > 0) {
-          const addition = generateAdditionQuestions(Math.floor(neededCount / 4));
-          const subtraction = generateSubtractionQuestions(Math.floor(neededCount / 4));
-          const mixed = generateMixedQuestions(Math.floor(neededCount / 4));
-          const multiplication = generateMultiplicationQuestions(neededCount - Math.floor(neededCount / 4) * 3);
-          
-          // 优先使用需要复习的题目
-          return [...reviewQuestions.map(q => ({...q, userAnswer: null})), ...addition, ...subtraction, ...multiplication, ...mixed];
-        }
+        const newQuestionCount = neededCount/4;
 
-        const addition = generateAdditionQuestions(25);
-        const subtraction = generateSubtractionQuestions(25);
-        const mixed = generateMixedQuestions(25);
-        const multiplication = generateMultiplicationQuestions(25);
-        return [...addition, ...subtraction, ...multiplication, ...mixed];
+        const addition = generateAdditionQuestions(newQuestionCount);
+        const subtraction = generateSubtractionQuestions(newQuestionCount);
+        const mixed = generateMixedQuestions(newQuestionCount);
+        const multiplication = generateMultiplicationQuestions(newQuestionCount);
+        return [...reviewQuestions.map(q => ({...q, userAnswer: null})), ...addition, ...subtraction, ...multiplication, ...mixed].slice(0, questionCount);
       }
 
       // 修改保存答题结果到本地存储函数
